@@ -1,0 +1,1217 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Final Green & Tasty API, guest confirmation and restaurant booking workflow.",
+  "Metadata": {
+    "AWSToolsMetrics": {
+      "AWSAgentToolkit": "aws-cloudformation@3"
+    }
+  },
+  "Parameters": {
+    "CodeBucket": {
+      "Type": "String"
+    },
+    "CodeKey": {
+      "Type": "String"
+    },
+    "AuthIssuer": {
+      "Type": "String",
+      "AllowedPattern": "^https://cognito-idp\\.[a-z0-9-]+\\.amazonaws\\.com/[A-Za-z0-9_-]+$"
+    },
+    "AuthClientId": {
+      "Type": "String",
+      "AllowedPattern": "^[a-zA-Z0-9]+$"
+    },
+    "FrontendUrl": {
+      "Type": "String",
+      "AllowedPattern": "^https://[a-z0-9.-]+$"
+    },
+    "EmailSender": {
+      "Type": "String",
+      "AllowedPattern": "^[A-Za-z0-9._%+@-]+$"
+    },
+    "SandboxRecipient": {
+      "Type": "String",
+      "AllowedPattern": "^[A-Za-z0-9._%+@-]+$"
+    },
+    "AdditionalSandboxRecipient": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "^[A-Za-z0-9._%+@-]*$"
+    },
+    "WaiterSubject": {
+      "Type": "String",
+      "AllowedPattern": "^[A-Za-z0-9_-]{1,128}$"
+    },
+    "WaiterLocationId": {
+      "Type": "String",
+      "AllowedPattern": "^[A-Za-z0-9_-]{1,128}$"
+    }
+  },
+  "Conditions": {
+    "HasAdditionalSandboxRecipient": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "AdditionalSandboxRecipient"
+            },
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  "Resources": {
+    "Groups": {
+      "Type": "AWS::DynamoDB::Table",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Stores groups, order state and exact-key lookups atomically.",
+          "must": "Retain data; optimistic version conditions; eu-north-1 only."
+        }
+      },
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH"
+          }
+        ],
+        "SSESpecification": {
+          "SSEEnabled": true
+        },
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "EPAM-Marathon5"
+          }
+        ],
+        "StreamSpecification": {
+          "StreamViewType": "NEW_AND_OLD_IMAGES"
+        }
+      }
+    },
+    "LambdaLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Bounded retention of API execution logs.",
+          "must": "Do not log tokens, passwords or request payloads."
+        }
+      },
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/aws/lambda/${AWS::StackName}-api"
+        },
+        "RetentionInDays": 7
+      }
+    },
+    "ApiLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "API Gateway request status and timing only.",
+          "must": "No authorization headers or request bodies."
+        }
+      },
+      "Properties": {
+        "RetentionInDays": 7
+      }
+    },
+    "ExecutionRole": {
+      "Type": "AWS::IAM::Role",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Runtime can read/write only its aggregate table and log group.",
+          "must": "Scope DynamoDB to the group table, SES to the verified sender, and log writes to this function."
+        }
+      },
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "OwnerApiStorageAndLogs",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:DeleteItem",
+                    "dynamodb:ConditionCheckItem",
+                    "dynamodb:UpdateItem"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "Groups",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-api:*"
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ses:SendEmail"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${EmailSender}"
+                    },
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SandboxRecipient}"
+                    },
+                    {
+                      "Fn::If": [
+                        "HasAdditionalSandboxRecipient",
+                        {
+                          "Fn::Sub": "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${AdditionalSandboxRecipient}"
+                        },
+                        {
+                          "Ref": "AWS::NoValue"
+                        }
+                      ]
+                    }
+                  ],
+                  "Condition": {
+                    "StringEquals": {
+                      "ses:FromAddress": {
+                        "Ref": "EmailSender"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "Function": {
+      "Type": "AWS::Lambda::Function",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "ASP.NET minimal API hosted on on-demand Lambda.",
+          "must": "Production auth and DynamoDB required; no in-memory fallback; compatible ARM64 ZIP."
+        }
+      },
+      "Properties": {
+        "FunctionName": {
+          "Fn::Sub": "${AWS::StackName}-api"
+        },
+        "Runtime": "dotnet8",
+        "Architectures": [
+          "arm64"
+        ],
+        "Handler": "Restaurant.Api",
+        "Role": {
+          "Fn::GetAtt": [
+            "ExecutionRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "S3Bucket": {
+            "Ref": "CodeBucket"
+          },
+          "S3Key": {
+            "Ref": "CodeKey"
+          }
+        },
+        "MemorySize": 512,
+        "Timeout": 15,
+        "Environment": {
+          "Variables": {
+            "ASPNETCORE_ENVIRONMENT": "Production",
+            "Authentication__Authority": {
+              "Ref": "AuthIssuer"
+            },
+            "Authentication__Audience": {
+              "Ref": "AuthClientId"
+            },
+            "DynamoDb__TableName": {
+              "Ref": "Groups"
+            },
+            "Storage__UseInMemory": "false",
+            "AllowedHosts": "*",
+            "Cors__AllowedOrigins__0": {
+              "Ref": "FrontendUrl"
+            },
+            "Email__Provider": "SES",
+            "Email__Sender": {
+              "Ref": "EmailSender"
+            },
+            "Email__FrontendBaseUrl": {
+              "Ref": "FrontendUrl"
+            },
+            "Restaurant__Staff__0__Subject": {
+              "Ref": "WaiterSubject"
+            },
+            "Restaurant__Staff__0__LocationId": {
+              "Ref": "WaiterLocationId"
+            },
+            "GuestMail__Background": "true"
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "EPAM-Marathon5"
+          }
+        ]
+      },
+      "DependsOn": [
+        "LambdaLogs"
+      ]
+    },
+    "Api": {
+      "Type": "AWS::ApiGatewayV2::Api",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Low-overhead HTTP API entry point.",
+          "must": "Owner routes protected by JWT; explicit localhost CORS."
+        }
+      },
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-http"
+        },
+        "ProtocolType": "HTTP",
+        "CorsConfiguration": {
+          "AllowOrigins": [
+            {
+              "Ref": "FrontendUrl"
+            }
+          ],
+          "AllowMethods": [
+            "GET",
+            "POST",
+            "DELETE",
+            "OPTIONS"
+          ],
+          "AllowHeaders": [
+            "Authorization",
+            "Content-Type"
+          ],
+          "MaxAge": 300
+        }
+      }
+    },
+    "Integration": {
+      "Type": "AWS::ApiGatewayV2::Integration",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Translates HTTP API v2 requests into ASP.NET requests.",
+          "must": "Payload format must match LambdaEventSource.HttpApi."
+        }
+      },
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "IntegrationType": "AWS_PROXY",
+        "IntegrationUri": {
+          "Fn::GetAtt": [
+            "Function",
+            "Arn"
+          ]
+        },
+        "PayloadFormatVersion": "2.0",
+        "TimeoutInMillis": 15000
+      }
+    },
+    "Jwt": {
+      "Type": "AWS::ApiGatewayV2::Authorizer",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Rejects unsigned/foreign/expired tokens before Lambda.",
+          "must": "Application also validates JWT and checks stored OwnerSubject."
+        }
+      },
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "AuthorizerType": "JWT",
+        "Name": "CognitoOwner",
+        "IdentitySource": [
+          "$request.header.Authorization"
+        ],
+        "JwtConfiguration": {
+          "Issuer": {
+            "Ref": "AuthIssuer"
+          },
+          "Audience": [
+            {
+              "Ref": "AuthClientId"
+            }
+          ]
+        }
+      }
+    },
+    "DefaultRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Protects all application owner routes by default.",
+          "must": "Do not replace JWT authorization with anonymous access."
+        }
+      },
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "RouteKey": "$default",
+        "Target": {
+          "Fn::Sub": "integrations/${Integration}"
+        },
+        "AuthorizationType": "JWT",
+        "AuthorizerId": {
+          "Ref": "Jwt"
+        }
+      }
+    },
+    "HealthRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Minimal public liveness endpoint.",
+          "must": "Returns status only."
+        }
+      },
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "RouteKey": "GET /health",
+        "Target": {
+          "Fn::Sub": "integrations/${Integration}"
+        },
+        "AuthorizationType": "NONE"
+      }
+    },
+    "InviteRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Invitation metadata is accessible to the bearer of its random invitation token.",
+          "must": "No guest carts or owner operations exposed anonymously."
+        }
+      },
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "RouteKey": "GET /guest/invites/{token}",
+        "Target": {
+          "Fn::Sub": "integrations/${Integration}"
+        },
+        "AuthorizationType": "NONE"
+      }
+    },
+    "OptionsRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Allows browser CORS preflight with a JWT-protected default route.",
+          "must": "No data mutation through OPTIONS."
+        }
+      },
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "RouteKey": "OPTIONS /{proxy+}",
+        "Target": {
+          "Fn::Sub": "integrations/${Integration}"
+        },
+        "AuthorizationType": "NONE"
+      }
+    },
+    "Stage": {
+      "Type": "AWS::ApiGatewayV2::Stage",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Automatically publishes workshop routes with conservative throttling.",
+          "must": "Record status only; alerts are not a hard spending cap."
+        }
+      },
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "StageName": "$default",
+        "AutoDeploy": true,
+        "DefaultRouteSettings": {
+          "ThrottlingBurstLimit": 10,
+          "ThrottlingRateLimit": 5
+        },
+        "AccessLogSettings": {
+          "DestinationArn": {
+            "Fn::GetAtt": [
+              "ApiLogs",
+              "Arn"
+            ]
+          },
+          "Format": "{\"requestId\":\"$context.requestId\",\"status\":\"$context.status\",\"route\":\"$context.routeKey\",\"latency\":\"$context.responseLatency\"}"
+        }
+      }
+    },
+    "InvokePermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Allows only this API Gateway to invoke the function.",
+          "must": "Scope permission to this account and API."
+        }
+      },
+      "Properties": {
+        "FunctionName": {
+          "Ref": "Function"
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "apigateway.amazonaws.com",
+        "SourceArn": {
+          "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*"
+        },
+        "SourceAccount": {
+          "Ref": "AWS::AccountId"
+        }
+      }
+    },
+    "GuestCreateRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Allows the anonymous guest or catalog flow to reach the API.",
+          "must": "Keep anonymous access limited to these routes; guest capabilities and application rate limits remain required."
+        }
+      },
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "RouteKey": "POST /guest/orders",
+        "Target": {
+          "Fn::Sub": "integrations/${Integration}"
+        },
+        "AuthorizationType": "NONE"
+      }
+    },
+    "GuestOrdersReadRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Allows the anonymous guest or catalog flow to reach the API.",
+          "must": "Keep anonymous access limited to these routes; guest capabilities and application rate limits remain required."
+        }
+      },
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "RouteKey": "GET /guest/orders/{proxy+}",
+        "Target": {
+          "Fn::Sub": "integrations/${Integration}"
+        },
+        "AuthorizationType": "NONE"
+      }
+    },
+    "GuestOrdersWriteRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Allows the anonymous guest or catalog flow to reach the API.",
+          "must": "Keep anonymous access limited to these routes; guest capabilities and application rate limits remain required."
+        }
+      },
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "RouteKey": "POST /guest/orders/{proxy+}",
+        "Target": {
+          "Fn::Sub": "integrations/${Integration}"
+        },
+        "AuthorizationType": "NONE"
+      }
+    },
+    "LocationsRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Allows the anonymous guest or catalog flow to reach the API.",
+          "must": "Keep anonymous access limited to these routes; guest capabilities and application rate limits remain required."
+        }
+      },
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "RouteKey": "GET /locations",
+        "Target": {
+          "Fn::Sub": "integrations/${Integration}"
+        },
+        "AuthorizationType": "NONE"
+      }
+    },
+    "LocationDetailRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Allows the anonymous guest or catalog flow to reach the API.",
+          "must": "Keep anonymous access limited to these routes; guest capabilities and application rate limits remain required."
+        }
+      },
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "RouteKey": "GET /locations/{id}",
+        "Target": {
+          "Fn::Sub": "integrations/${Integration}"
+        },
+        "AuthorizationType": "NONE"
+      }
+    },
+    "AvailableTablesRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Allows the anonymous guest or catalog flow to reach the API.",
+          "must": "Keep anonymous access limited to these routes; guest capabilities and application rate limits remain required."
+        }
+      },
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "RouteKey": "GET /available-tables",
+        "Target": {
+          "Fn::Sub": "integrations/${Integration}"
+        },
+        "AuthorizationType": "NONE"
+      }
+    },
+    "AvailableSlotsRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Allows the anonymous guest or catalog flow to reach the API.",
+          "must": "Keep anonymous access limited to these routes; guest capabilities and application rate limits remain required."
+        }
+      },
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "RouteKey": "GET /tables/{tableId}/available-time-slots",
+        "Target": {
+          "Fn::Sub": "integrations/${Integration}"
+        },
+        "AuthorizationType": "NONE"
+      }
+    },
+    "PublicDishesRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "RouteKey": "GET /dishes",
+        "Target": {
+          "Fn::Sub": "integrations/${Integration}"
+        },
+        "AuthorizationType": "NONE"
+      }
+    },
+    "PopularDishesRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "RouteKey": "GET /dishes/popular",
+        "Target": {
+          "Fn::Sub": "integrations/${Integration}"
+        },
+        "AuthorizationType": "NONE"
+      }
+    },
+    "LocationDishesRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "RouteKey": "GET /locations/{id}/dishes",
+        "Target": {
+          "Fn::Sub": "integrations/${Integration}"
+        },
+        "AuthorizationType": "NONE"
+      }
+    },
+    "NotificationFailureBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Retains failed stream event payloads for recovery.",
+          "must": "Private, encrypted, short retention; event payloads may contain personal data."
+        }
+      },
+      "Properties": {
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "LifecycleConfiguration": {
+          "Rules": [
+            {
+              "Id": "ExpireFailedEvents",
+              "Status": "Enabled",
+              "ExpirationInDays": 7
+            }
+          ]
+        }
+      }
+    },
+    "NotificationLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Stores worker diagnostics without message contents.",
+          "must": "Do not log email addresses, tokens, or stream payloads."
+        }
+      },
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/aws/lambda/${AWS::StackName}-notification-worker"
+        },
+        "RetentionInDays": 7
+      }
+    },
+    "NotificationRole": {
+      "Type": "AWS::IAM::Role",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Permits the notification worker to read its stream, update its table and send scoped email.",
+          "must": "Restrict storage, stream, logs, failure destination and SES resources."
+        }
+      },
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "NotificationWorker",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:DeleteItem",
+                    "dynamodb:ConditionCheckItem"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "Groups",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:DescribeStream",
+                    "dynamodb:GetRecords",
+                    "dynamodb:GetShardIterator"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "Groups",
+                      "StreamArn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:ListStreams"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-notification-worker:*"
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:PutObject"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "${NotificationFailureBucket.Arn}/*"
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "s3:ResourceAccount": {
+                        "Ref": "AWS::AccountId"
+                      }
+                    }
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:ListBucket"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "NotificationFailureBucket",
+                      "Arn"
+                    ]
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "s3:ResourceAccount": {
+                        "Ref": "AWS::AccountId"
+                      }
+                    }
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ses:SendEmail"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${EmailSender}"
+                    },
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SandboxRecipient}"
+                    },
+                    {
+                      "Fn::If": [
+                        "HasAdditionalSandboxRecipient",
+                        {
+                          "Fn::Sub": "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${AdditionalSandboxRecipient}"
+                        },
+                        {
+                          "Ref": "AWS::NoValue"
+                        }
+                      ]
+                    }
+                  ],
+                  "Condition": {
+                    "StringEquals": {
+                      "ses:FromAddress": {
+                        "Ref": "EmailSender"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "NotificationFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Processes newly created notification intents from DynamoDB Streams.",
+          "must": "No public invocation; reuse the same release package; never log stream images."
+        }
+      },
+      "Properties": {
+        "FunctionName": {
+          "Fn::Sub": "${AWS::StackName}-notification-worker"
+        },
+        "Runtime": "dotnet8",
+        "Architectures": [
+          "arm64"
+        ],
+        "Handler": "Restaurant.Api::Restaurant.Api.NotificationStreamLambda::HandleAsync",
+        "Role": {
+          "Fn::GetAtt": [
+            "NotificationRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "S3Bucket": {
+            "Ref": "CodeBucket"
+          },
+          "S3Key": {
+            "Ref": "CodeKey"
+          }
+        },
+        "MemorySize": 512,
+        "Timeout": 60,
+        "Environment": {
+          "Variables": {
+            "DynamoDb__TableName": {
+              "Ref": "Groups"
+            },
+            "Email__Sender": {
+              "Ref": "EmailSender"
+            },
+            "Email__FrontendBaseUrl": {
+              "Ref": "FrontendUrl"
+            }
+          }
+        }
+      },
+      "DependsOn": [
+        "NotificationLogs"
+      ]
+    },
+    "NotificationMapping": {
+      "Type": "AWS::Lambda::EventSourceMapping",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Delivers group changes to the worker with bounded retry and durable failure records.",
+          "must": "Batch size one avoids oversized group images; retain failed event payloads for recovery."
+        }
+      },
+      "Properties": {
+        "EventSourceArn": {
+          "Fn::GetAtt": [
+            "Groups",
+            "StreamArn"
+          ]
+        },
+        "FunctionName": {
+          "Ref": "NotificationFunction"
+        },
+        "StartingPosition": "TRIM_HORIZON",
+        "BatchSize": 1,
+        "Enabled": true,
+        "MaximumRetryAttempts": 20,
+        "MaximumRecordAgeInSeconds": 3600,
+        "DestinationConfig": {
+          "OnFailure": {
+            "Destination": {
+              "Fn::GetAtt": [
+                "NotificationFailureBucket",
+                "Arn"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "NotificationErrors": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Exposes worker errors in CloudWatch for investigation.",
+          "must": "No email action configured; inspect alarm and retained failures."
+        }
+      },
+      "Properties": {
+        "AlarmDescription": "Notification worker reported an error; inspect the failure store and delivery history.",
+        "Namespace": "AWS/Lambda",
+        "MetricName": "Errors",
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching",
+        "Dimensions": [
+          {
+            "Name": "FunctionName",
+            "Value": {
+              "Ref": "NotificationFunction"
+            }
+          }
+        ]
+      }
+    },
+    "NotificationAlarmLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Stores alert delivery diagnostics.",
+          "must": "Do not log email contents or private event data."
+        }
+      },
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/aws/lambda/${AWS::StackName}-notification-alarm"
+        },
+        "RetentionInDays": 7
+      }
+    },
+    "NotificationAlarmRole": {
+      "Type": "AWS::IAM::Role",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Sends an operational warning only to the configured sender.",
+          "must": "SES must be limited to the sender identity; log writes limited to this function."
+        }
+      },
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "NotificationAlarm",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ses:SendEmail"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${EmailSender}"
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "ses:FromAddress": {
+                        "Ref": "EmailSender"
+                      }
+                    },
+                    "ForAllValues:StringEquals": {
+                      "ses:Recipients": {
+                        "Ref": "EmailSender"
+                      }
+                    },
+                    "Null": {
+                      "ses:Recipients": "false"
+                    }
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-notification-alarm:*"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "NotificationAlarmFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Warns the project operator when the worker enters ALARM.",
+          "must": "Send a static message only; avoid logging event data."
+        }
+      },
+      "DependsOn": [
+        "NotificationAlarmLogs"
+      ],
+      "Properties": {
+        "FunctionName": {
+          "Fn::Sub": "${AWS::StackName}-notification-alarm"
+        },
+        "Runtime": "dotnet8",
+        "Architectures": [
+          "arm64"
+        ],
+        "Handler": "Restaurant.Api::Restaurant.Api.NotificationAlarmLambda::HandleAsync",
+        "Role": {
+          "Fn::GetAtt": [
+            "NotificationAlarmRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "S3Bucket": {
+            "Ref": "CodeBucket"
+          },
+          "S3Key": {
+            "Ref": "CodeKey"
+          }
+        },
+        "MemorySize": 256,
+        "Timeout": 15,
+        "Environment": {
+          "Variables": {
+            "Email__Sender": {
+              "Ref": "EmailSender"
+            }
+          }
+        }
+      }
+    },
+    "NotificationAlarmRule": {
+      "Type": "AWS::Events::Rule",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Routes the notification worker alarm to the operator mailer.",
+          "must": "Only this alarm entering ALARM may trigger the function."
+        }
+      },
+      "Properties": {
+        "State": "ENABLED",
+        "EventPattern": {
+          "source": [
+            "aws.cloudwatch"
+          ],
+          "detail-type": [
+            "CloudWatch Alarm State Change"
+          ],
+          "resources": [
+            {
+              "Fn::GetAtt": [
+                "NotificationErrors",
+                "Arn"
+              ]
+            }
+          ],
+          "detail": {
+            "state": {
+              "value": [
+                "ALARM"
+              ]
+            }
+          }
+        },
+        "Targets": [
+          {
+            "Id": "EmailOperator",
+            "Arn": {
+              "Fn::GetAtt": [
+                "NotificationAlarmFunction",
+                "Arn"
+              ]
+            },
+            "RetryPolicy": {
+              "MaximumEventAgeInSeconds": 3600,
+              "MaximumRetryAttempts": 3
+            }
+          }
+        ]
+      }
+    },
+    "NotificationAlarmPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "NotificationAlarmFunction"
+        },
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "NotificationAlarmRule",
+            "Arn"
+          ]
+        },
+        "SourceAccount": {
+          "Ref": "AWS::AccountId"
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "ApiUrl": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Api",
+          "ApiEndpoint"
+        ]
+      }
+    },
+    "TableName": {
+      "Value": {
+        "Ref": "Groups"
+      }
+    },
+    "FunctionName": {
+      "Value": {
+        "Ref": "Function"
+      }
+    },
+    "Region": {
+      "Value": {
+        "Ref": "AWS::Region"
+      }
+    }
+  }
+}

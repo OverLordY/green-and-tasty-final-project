@@ -1,0 +1,13 @@
+main { max-width: 1120px; margin: auto; padding: 24px; font-family: Arial, sans-serif; color: #202923; }
+.brand { color: #176d35; font-weight: bold; }
+h1 { font-size: 28px; } h2 { font-size: 20px; }
+label { display: block; margin: 16px 0; }
+input { display: block; padding: 10px; border: 1px solid #b8c8bc; border-radius: 6px; max-width: 100%; box-sizing: border-box; }
+button { padding: 10px 16px; margin: 4px; background: #176d35; color: white; border: 0; border-radius: 6px; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+.menu { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 20px; list-style: none; padding: 0; }
+.menu li { border: 1px solid #dce5df; border-radius: 12px; padding: 16px; }
+img { width: 100%; height: 150px; object-fit: contain; }
+section { background: #f4f7f4; padding: 20px; border-radius: 12px; }
+.error { color: #a62924; }
+@media(max-width: 480px) { main { padding: 16px; } section { padding: 12px; } }

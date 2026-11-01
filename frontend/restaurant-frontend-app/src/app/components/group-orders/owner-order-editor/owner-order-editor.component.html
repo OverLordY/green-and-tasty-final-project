@@ -1,0 +1,41 @@
+<app-modal [title]="'Замовлення: ' + participant().name" width="680px" [closeOnBackdrop]="!busy()" (closed)="close()">
+  @if (isOwner()) { <p>Ваші страви додаються до спільного замовлення одразу. Організатор увійшов у підтверджений обліковий запис.</p> }
+  @else {
+  <p>Зменшення та скасування діють одразу. Нові страви й додані порції потребують підтвердження гостя.</p>
+  <p>Лист із підтвердженням отримає власник цього замовлення: <strong>{{ participant().name }}</strong>@if (participant().contactEmailMasked) { · {{ participant().contactEmailMasked }} }. Поле «Для кого» лише вказує, кому призначена страва, і не змінює адресу листа.</p>
+  <p>Щоб інша людина підтверджувала свої страви самостійно, запросіть її до групи: вона створить власне замовлення та вкаже свою пошту.</p>
+  }
+  @if (menu(); as context) {
+    <p>Редагування доступне до {{ context.changeDeadline | date:'dd.MM.yyyy HH:mm' }}.</p>
+    @if (participant().pendingItems?.length && context.canChange) {
+      <button type="button" [disabled]="busy()" (click)="remind()">Нагадати гостю про підтвердження</button>
+      <p>Повторне нагадування доступне через хвилину. Старе посилання підтвердження буде замінено новим.</p>
+    }
+    @if (!context.canChange) { <p role="status">Редагування закрито. Чинні страви залишаються в замовленні.</p> }
+    <ul>
+      @for (line of lines(); track line.lineKey ?? line.dish.id) {
+        <li><span>{{ line.dish.name }} × {{ line.quantity }} · Для: {{ line.forWhom }} · {{ line.dish.price * line.quantity | currency }}</span>
+          <button type="button" [disabled]="busy() || !context.canChange" (click)="edit(line)">Змінити</button></li>
+      } @empty { <li>Страв ще немає.</li> }
+    </ul>
+    <form (ngSubmit)="apply()">
+      <label>Страва<select name="dish" [(ngModel)]="dishId" [disabled]="busy() || !context.canChange" required>
+        <option value="">Оберіть страву</option>
+        @for (dish of context.items; track dish.id) { <option [value]="dish.id">{{ dish.name }} · {{ dish.price | currency }} {{ dish.available ? '' : '(недоступна для додавання)' }}</option> }
+      </select></label>
+      <label>Для кого (ім’я)<input name="recipient" [(ngModel)]="forWhom" maxlength="100" [disabled]="busy() || !context.canChange" required /></label>
+      <label>Кількість порцій<input type="number" name="quantity" [(ngModel)]="quantity" min="0" max="99" step="1" [disabled]="busy() || !context.canChange" required /></label>
+      <p>Для наявної страви вкажіть поточне ім’я отримувача. Кількість 0 скасовує цей рядок.</p>
+      <button type="submit" [disabled]="busy() || !context.canChange">Застосувати зміну</button>
+    </form>
+    @if (!isOwner() && lines().length && context.canChange) {
+      @if (!confirmClear()) { <button type="button" class="danger" [disabled]="busy()" (click)="confirmClear.set(true)">Очистити страви гостя</button> }
+      @else { <div class="clear-warning"><p>Усі страви цього гостя буде скасовано одразу. Гість залишиться у групі.</p>
+        <button type="button" class="danger" [disabled]="busy()" (click)="clear()">Так, очистити замовлення</button>
+        <button type="button" [disabled]="busy()" (click)="confirmClear.set(false)">Залишити страви</button></div> }
+    }
+  } @else if (!error()) { <p role="status">Завантажуємо меню…</p> }
+  @if (message()) { <p role="status">{{ message() }}</p> }
+  @if (error()) { <p role="alert">{{ error() }}</p> }
+  <div modal-actions><button type="button" [disabled]="busy()" (click)="close()">Закрити</button></div>
+</app-modal>

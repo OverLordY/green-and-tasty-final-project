@@ -1,0 +1,49 @@
+<main>
+  <p class="brand">Green &amp; Tasty</p>
+  <h1>Попереднє замовлення гостя</h1>
+  @if (loading()) { <p role="status">Завантажуємо меню…</p> }
+  @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
+  @if (!loading() && !preview()) { <button type="button" (click)="load()">Спробувати ще раз</button> }
+  @if (preview(); as menu) {
+    <p>{{ menu.invite.RestaurantName }} · {{ menu.invite.LocationAddress }}</p>
+    <p>Зустріч: {{ menu.invite.StartTime | date:'dd.MM.yyyy HH:mm' }}</p>
+    <app-guest-access-recovery [inviteToken]="inviteToken" />
+    <p>Оберіть і підтвердьте страви до {{ menu.deadlines.changesClose | date:'dd.MM.yyyy HH:mm' }}</p>
+    @if (!menu.canChange) { <p role="status">Термін змін завершився або групу закрито. Зверніться до організатора зустрічі.</p> }
+    <label>Для кого обираєте страви?
+      <input maxlength="100" placeholder="Для мене" [ngModel]="recipient()" (ngModelChange)="recipient.set($event)" />
+    </label>
+    <nav aria-label="Категорії меню">
+      <button type="button" (click)="category.set('')" [attr.aria-pressed]="category() === ''">Усі страви</button>
+      @for (item of categories(); track item) { <button type="button" (click)="category.set(item)" [attr.aria-pressed]="category() === item">{{ item }}</button> }
+    </nav>
+    <ul class="menu">
+      @for (dish of visibleMenu(); track dish.id) {
+        <li>
+          @if (dish.imageUrl) { <img [src]="dish.imageUrl" alt="" loading="lazy" /> }
+          <h2>{{ dish.name }}</h2><p>{{ dish.price | currency:'USD' }} @if (dish.weight) { · {{ dish.weight }} }</p>
+          @if (!dish.available) { <p>Немає в наявності</p> }
+          <button type="button" [disabled]="!canEdit() || !dish.available" (click)="add(dish)" [attr.aria-label]="'Додати ' + dish.name">Додати</button>
+        </li>
+      } @empty { <p>У цій категорії поки немає страв.</p> }
+    </ul>
+    <section aria-label="Моє замовлення">
+      <h2>Моє замовлення</h2>
+      <ul>
+        @for (item of selection(); track item.key) {
+          <li>{{ item.name }} × {{ item.quantity }} · {{ item.forWhom }}
+            <button type="button" [disabled]="!canEdit()" (click)="decrease(item.key)" [attr.aria-label]="'Зменшити кількість ' + item.name">−</button>
+          </li>
+        } @empty { <li>Оберіть страви з меню.</li> }
+      </ul>
+      <p>Разом: {{ total() | currency:'USD' }}</p>
+      @if (!hasDraft()) {
+        <label>Ваше ім’я<input autocomplete="name" maxlength="100" [ngModel]="guestName()" (ngModelChange)="guestName.set($event)" /></label>
+        <label>Електронна пошта<input type="email" autocomplete="email" maxlength="254" [ngModel]="email()" (ngModelChange)="email.set($event)" /></label>
+      }
+      <p>Надішлемо перелік страв і посилання для підтвердження. Реєстрація не потрібна.</p>
+      <button type="button" [disabled]="!canEdit() || selection().length === 0" (click)="send()">{{ busy() ? 'Зберігаємо…' : 'Підтвердити через пошту' }}</button>
+      @if (emailSent()) { <p role="status">Перевірте пошту {{ maskedEmail() }}. Замовлення очікує вашого підтвердження.</p> }
+    </section>
+  }
+</main>

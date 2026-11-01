@@ -1,0 +1,18 @@
+let buckets = Resources.*[ Type == 'AWS::S3::Bucket' ]
+let distributions = Resources.*[ Type == 'AWS::CloudFront::Distribution' ]
+let origins = Resources.*[ Type == 'AWS::CloudFront::OriginAccessControl' ]
+
+rule private_bucket when %buckets !empty {
+  %buckets.Properties.PublicAccessBlockConfiguration.BlockPublicAcls == true
+  %buckets.Properties.PublicAccessBlockConfiguration.IgnorePublicAcls == true
+  %buckets.Properties.PublicAccessBlockConfiguration.BlockPublicPolicy == true
+  %buckets.Properties.PublicAccessBlockConfiguration.RestrictPublicBuckets == true
+  %buckets.Properties.BucketEncryption exists
+}
+rule secure_viewers when %distributions !empty {
+  %distributions.Properties.DistributionConfig.DefaultCacheBehavior.ViewerProtocolPolicy == 'redirect-to-https'
+}
+rule signed_origins when %origins !empty {
+  %origins.Properties.OriginAccessControlConfig.SigningBehavior == 'always'
+  %origins.Properties.OriginAccessControlConfig.SigningProtocol == 'sigv4'
+}

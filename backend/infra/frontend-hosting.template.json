@@ -1,0 +1,47 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Private S3 and CloudFront HTTPS hosting for the Green & Tasty SPA.",
+  "Metadata": { "AWSToolsMetrics": { "AWSAgentToolkit": "aws-cloudformation@3" } },
+  "Resources": {
+    "SiteBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Metadata": { "com.aws.cloudformation.Context": { "why": "Stores the static application build.", "must": "Block public access; access only through the distribution." } },
+      "Properties": {
+        "PublicAccessBlockConfiguration": { "BlockPublicAcls": true, "IgnorePublicAcls": true, "BlockPublicPolicy": true, "RestrictPublicBuckets": true },
+        "BucketEncryption": { "ServerSideEncryptionConfiguration": [{ "ServerSideEncryptionByDefault": { "SSEAlgorithm": "AES256" } }] }
+      }
+    },
+    "OriginAccess": {
+      "Type": "AWS::CloudFront::OriginAccessControl",
+      "Metadata": { "com.aws.cloudformation.Context": { "why": "Signs CloudFront requests to the private bucket.", "must": "Always use SigV4 signing." } },
+      "Properties": { "OriginAccessControlConfig": { "Name": { "Fn::Sub": "${AWS::StackName}-origin" }, "OriginAccessControlOriginType": "s3", "SigningBehavior": "always", "SigningProtocol": "sigv4" } }
+    },
+    "Headers": {
+      "Type": "AWS::CloudFront::ResponseHeadersPolicy",
+      "Metadata": { "com.aws.cloudformation.Context": { "why": "Limits browser disclosure of URLs and basic content sniffing.", "must": "Use no-referrer for guest links." } },
+      "Properties": { "ResponseHeadersPolicyConfig": { "Name": { "Fn::Sub": "${AWS::StackName}-headers" }, "SecurityHeadersConfig": { "ContentTypeOptions": { "Override": true }, "ReferrerPolicy": { "Override": true, "ReferrerPolicy": "no-referrer" } } } }
+    },
+    "Distribution": {
+      "Type": "AWS::CloudFront::Distribution",
+      "Metadata": { "com.aws.cloudformation.Context": { "why": "Publishes the SPA over HTTPS.", "must": "Redirect HTTP to HTTPS and use private S3 origin access." } },
+      "Properties": { "DistributionConfig": {
+        "Enabled": true, "DefaultRootObject": "index.html", "HttpVersion": "http2and3",
+        "Origins": [{ "Id": "site", "DomainName": { "Fn::GetAtt": ["SiteBucket", "RegionalDomainName"] }, "OriginAccessControlId": { "Fn::GetAtt": ["OriginAccess", "Id"] }, "S3OriginConfig": { "OriginAccessIdentity": "" } }],
+        "DefaultCacheBehavior": { "TargetOriginId": "site", "ViewerProtocolPolicy": "redirect-to-https", "AllowedMethods": ["GET", "HEAD", "OPTIONS"], "CachedMethods": ["GET", "HEAD"], "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6", "ResponseHeadersPolicyId": { "Ref": "Headers" }, "Compress": true },
+        "CustomErrorResponses": [{ "ErrorCode": 403, "ResponseCode": 200, "ResponsePagePath": "/index.html", "ErrorCachingMinTTL": 0 }, { "ErrorCode": 404, "ResponseCode": 200, "ResponsePagePath": "/index.html", "ErrorCachingMinTTL": 0 }],
+        "ViewerCertificate": { "CloudFrontDefaultCertificate": true }
+      } }
+    },
+    "BucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Metadata": { "com.aws.cloudformation.Context": { "why": "Limits static asset reads to this CloudFront distribution.", "must": "Deny insecure transport and do not grant public access." } },
+      "Properties": { "Bucket": { "Ref": "SiteBucket" }, "PolicyDocument": { "Version": "2012-10-17", "Statement": [
+        { "Sid": "AllowDistributionRead", "Effect": "Allow", "Principal": { "Service": "cloudfront.amazonaws.com" }, "Action": "s3:GetObject", "Resource": { "Fn::Sub": "${SiteBucket.Arn}/*" }, "Condition": { "StringEquals": { "AWS:SourceArn": { "Fn::Sub": "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}" } } } },
+        { "Sid": "DenyInsecureTransport", "Effect": "Deny", "Principal": "*", "Action": "s3:*", "Resource": [{ "Fn::GetAtt": ["SiteBucket", "Arn"] }, { "Fn::Sub": "${SiteBucket.Arn}/*" }], "Condition": { "Bool": { "aws:SecureTransport": "false" } } }
+      ] } }
+    }
+  },
+  "Outputs": { "BucketName": { "Value": { "Ref": "SiteBucket" } }, "DistributionId": { "Value": { "Ref": "Distribution" } }, "SiteUrl": { "Value": { "Fn::Sub": "https://${Distribution.DomainName}" } } }
+}

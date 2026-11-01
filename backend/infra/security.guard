@@ -1,0 +1,20 @@
+rule table_encryption {
+    Resources.Groups.Properties.SSESpecification.SSEEnabled == true
+}
+rule data_retention {
+    Resources.Groups.DeletionPolicy == 'Retain'
+    Resources.Users.DeletionPolicy == 'Retain'
+}
+rule owner_routes_require_jwt {
+    Resources.DefaultRoute.Properties.AuthorizationType == 'JWT'
+}
+rule public_client_has_no_secret {
+    Resources.Client.Properties.GenerateSecret == false
+}
+rule live_storage_required {
+    Resources.Function.Properties.Environment.Variables.Storage__UseInMemory == 'false'
+}
+rule log_retention_bounded {
+    Resources.LambdaLogs.Properties.RetentionInDays <= 7
+    Resources.ApiLogs.Properties.RetentionInDays <= 7
+}

@@ -1,0 +1,43 @@
+@use '../../shared/styles/abstracts/colors' as color;
+:host { display: block; background: color.$neutral-100; min-height: 75vh; padding: 32px 16px 56px; color: color.$neutral-900; }
+.owner-page { max-width: 940px; margin: 0 auto; }
+.page-heading { border-bottom: 1px solid color.$bg-green; padding-bottom: 20px; }
+.title-row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+h1 { margin: 0; font-size: 28px; font-weight: 600; }
+h2 { font-size: 19px; font-weight: 500; margin: 0; }
+.status-badge { font-size: 12px; background: color.$neutral-200; border-radius: 6px; padding: 5px 12px; }
+.status-badge.sent { background: color.$green-100; color: color.$green-800; }
+.reservation-details { display: flex; flex-wrap: wrap; gap: 14px 22px; margin-top: 16px; font-size: 14px; }
+.reservation-details > span { display: inline-flex; gap: 8px; align-items: center; }
+.reservation-details span span { color: color.$green-600; font-size: 20px; }
+.sync-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; font-size: 12px; color: color.$neutral-600; }
+.text-button { color: color.$green-800; background: transparent; border: 0; text-decoration: underline; cursor: pointer; min-height: 40px; padding: 8px; }
+.pending-warning { background: color.$orange-30; border: 1px solid color.$orange-100; border-radius: 9px; padding: 15px 18px; margin: 0 0 20px; font-size: 14px; display: flex; gap: 12px; }
+.participants { margin: 0; padding: 0; list-style: none; display: grid; gap: 20px; }
+.consolidated { background: color.$neutral-0; padding: 22px; margin-top: 24px; border-radius: 16px; }
+.hint { font-size: 13px; color: color.$neutral-600; margin-top: 8px; }
+.consolidated ul { list-style: none; padding: 0; margin: 16px 0 0; }
+.consolidated li { display: flex; justify-content: space-between; align-items: baseline; gap: 20px; padding: 12px 0; border-top: 1px solid color.$neutral-100; font-size: 14px; }
+.consolidated strong { white-space: nowrap; font-weight: 500; }
+.order-footer { border-top: 2px solid color.$bg-green; margin-top: 24px; padding-top: 20px; }
+.grand-total { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; }
+.grand-total h2, .grand-total strong { font-size: 27px; font-weight: 500; }
+.grand-total strong { color: color.$green-800; }
+button { font: inherit; }
+.primary, .secondary, .danger { border-radius: 8px; padding: 13px 24px; min-height: 48px; cursor: pointer; border: 1px solid color.$green-800; font-weight: 500; }
+.primary { background: color.$green-gradient; color: color.$neutral-0; }
+.secondary { color: color.$green-800; background: color.$neutral-0; }
+.danger { background: color.$red-400; border-color: color.$red-400; color: color.$neutral-0; }
+.submit-order { width: 100%; }
+button:disabled { cursor: not-allowed; opacity: .65; }
+.primary:disabled { background: color.$neutral-200; border-color: color.$neutral-200; color: color.$neutral-600; opacity: 1; }
+button:focus-visible { outline: 3px solid color.$green-300; outline-offset: 3px; }
+.state-panel, .empty-state { text-align: center; background: color.$neutral-0; padding: 40px 20px; border-radius: 14px; margin-top: 24px; }
+.refresh-error { color: color.$red-400; }
+.dialog-actions { display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap; }
+.dialog-total { display: flex; justify-content: space-between; padding-top: 16px; }
+.dialog-note { color: color.$neutral-600; font-size: 14px; }
+.spinner { display: inline-block; width: 22px; height: 22px; border: 3px solid color.$neutral-200; border-top-color: color.$green-600; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+@media (max-width: 480px) { :host { padding: 20px 12px 32px; } h1 { font-size: 24px; } .reservation-details { gap: 8px 14px; } .consolidated { padding: 16px; } .grand-total h2, .grand-total strong { font-size: 24px; } .pending-warning { padding: 12px; } }

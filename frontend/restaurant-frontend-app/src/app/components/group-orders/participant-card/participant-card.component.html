@@ -1,0 +1,66 @@
+<article class="participant-card">
+  <header class="card-heading">
+    <div class="identity">
+      <h2>{{ title() }}</h2>
+      <span class="status" [class.submitted]="participant().isSubmitted">
+        <span aria-hidden="true">{{ participant().isSubmitted ? '✓' : '◷' }}</span>
+        {{ statusLabel() }}
+      </span>
+    </div>
+    <div class="card-actions">
+    @if (canEdit() && (participant().type === 'Owner' || participant().type === 'Guest' && participant().confirmationStatus)) {
+      <button type="button" class="remove-button" [attr.aria-label]="'Редагувати замовлення ' + participant().name" (click)="editClick.emit(participant())">Редагувати страви</button>
+    }
+    @if (canRemove() && participant().type === 'Guest') {
+      <button type="button" class="remove-button" [attr.aria-label]="'Remove ' + participant().name" (click)="removeClick.emit(participant())">
+        Remove Guest
+      </button>
+    }
+    </div>
+  </header>
+  @if (participant().ownerChangeSummary) { <p class="change-notice">{{ participant().ownerChangeSummary }}</p> }
+
+  @if (participant().items.length) {
+    <ul class="items">
+      @for (item of participant().items; track item.lineKey ?? item.dish.id) {
+        <li class="item">
+          @if (item.dish.imageUrl) {
+            <img class="avatar" [src]="item.dish.imageUrl" alt="" width="40" height="40" loading="lazy" />
+          } @else {
+            <span class="avatar initial" aria-hidden="true">{{ item.dish.name.charAt(0) }}</span>
+          }
+          <div class="dish-details">
+            <p class="dish-name">{{ item.dish.name }}</p>
+            @if (item.forWhom) { <p>Для: {{ item.forWhom }}</p> }
+            @for (notice of participant().notices ?? []; track notice.key) {
+              @if (notice.key === item.lineKey) { <p class="change-notice">{{ notice.message }}</p> }
+            }
+            @if (item.dish.weight) {
+              <p class="weight">{{ item.dish.weight }}</p>
+            }
+          </div>
+          <span class="quantity">× {{ item.quantity }}</span>
+          <span class="price">{{ item.dish.price * item.quantity | currency }}</span>
+        </li>
+      }
+    </ul>
+  } @else {
+    <p class="empty">No dishes yet</p>
+  }
+  @for (notice of removedNotices(); track notice.key) {
+    <div class="cancelled-line">
+      <span>{{ notice.dishName }} @if (notice.forWhom) { · Для: {{ notice.forWhom }} }</span>
+      <p class="change-notice">{{ notice.message }}</p>
+    </div>
+  }
+  @if (participant().isSubmitted && participant().pendingItems?.length) {
+    <section class="pending-changes" aria-label="Зміни очікують підтвердження">
+      <p>Запропонований склад після підтвердження. До того чинні страви та сума залишаються без змін:</p>
+      @for (item of participant().pendingItems ?? []; track item.lineKey ?? item.dish.id) {
+        <p>{{ item.dish.name }} × {{ item.quantity }} @if (item.forWhom) { · Для: {{ item.forWhom }} }</p>
+      }
+    </section>
+  }
+
+  <p class="subtotal"><span>Subtotal</span><span>{{ participant().total | currency }}</span></p>
+</article>

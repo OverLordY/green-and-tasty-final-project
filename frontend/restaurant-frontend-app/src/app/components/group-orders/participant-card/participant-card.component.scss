@@ -1,0 +1,177 @@
+@use '../../../shared/styles/abstracts/colors' as color;
+
+:host {
+  display: block;
+  min-width: 0;
+}
+.change-notice { color: #a62924; font-size: 12px; margin: 6px 0; }
+.cancelled-line { padding: 12px 0; opacity: .85; }
+.pending-changes { border-left: 3px solid #b38226; padding: 4px 12px; margin: 12px 0; font-size: 13px; }
+.card-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+.participant-card {
+  padding: 24px;
+  border-radius: 16px;
+  background: color.$neutral-0;
+  color: color.$neutral-900;
+}
+
+.card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.identity {
+  min-width: 0;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  color: color.$neutral-700;
+  background: color.$orange-100;
+
+  &.submitted {
+    color: color.$green-800;
+    background: color.$green-100;
+  }
+}
+
+.remove-button {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 4px 0;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  color: color.$neutral-900;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+
+  &:hover {
+    color: color.$red-400;
+  }
+
+  &:focus-visible {
+    outline: 2px solid color.$green-600;
+    outline-offset: 4px;
+  }
+}
+
+.items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto minmax(76px, auto);
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid color.$neutral-100;
+}
+
+.avatar {
+  display: block;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.initial {
+  display: grid;
+  place-items: center;
+  background: color.$green-100;
+  color: color.$green-800;
+  font-size: 18px;
+}
+
+.dish-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.weight {
+  margin: 4px 0 0;
+  color: color.$neutral-600;
+  font-size: 12px;
+}
+
+.quantity {
+  color: color.$neutral-600;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.price {
+  font-size: 14px;
+  font-weight: 500;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.empty {
+  margin: 16px 0;
+  color: color.$neutral-600;
+  font-size: 14px;
+}
+
+.subtotal {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid color.$neutral-100;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+@media (max-width: 480px) {
+  .participant-card {
+    padding: 16px;
+  }
+
+  .card-heading {
+    gap: 10px;
+  }
+
+  h2 {
+    font-size: 16px;
+  }
+
+  .remove-button {
+    font-size: 12px;
+  }
+
+  .item {
+    grid-template-columns: 40px minmax(0, 1fr) auto auto;
+    gap: 8px;
+  }
+
+  .dish-name,
+  .quantity,
+  .price {
+    font-size: 12px;
+  }
+}

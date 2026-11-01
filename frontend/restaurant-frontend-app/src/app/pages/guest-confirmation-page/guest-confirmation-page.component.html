@@ -1,0 +1,76 @@
+<main>
+  <p class="brand">Green &amp; Tasty</p>
+  <h1>{{ confirmed() ? 'Моє замовлення' : isRecoveryLink ? 'Відновлення доступу до замовлення' : 'Підтвердіть ваше замовлення' }}</h1>
+  @if (!validLink) {
+    <p role="alert">Посилання неповне. Відкрийте повне посилання з листа.</p>
+  } @else {
+    @if (!confirmed()) {
+      <p>{{ isRecoveryLink ? 'Відновіть доступ на цьому пристрої. Страви від цього не підтвердяться. Реєстрація не потрібна.' : 'Перевірте склад замовлення нижче. Воно зміниться лише після натискання кнопки. Реєстрація не потрібна.' }}</p>
+      @if (preview(); as proposed) {
+        @if (proposed.confirmed.length) {
+          <h2>Зараз підтверджено</h2>
+          @for (line of proposed.confirmed; track line.key) { <p>{{ line.name }} × {{ line.quantity }} · Для: {{ line.forWhom }} · {{ line.unitPrice * line.quantity | currency:'USD' }}</p> }
+          <p>Поточна сума: {{ previewTotal(proposed.confirmed) | currency:'USD' }}</p>
+        }
+        <h2>{{ proposed.confirmed.length ? 'Склад після підтвердження змін' : 'Страви для підтвердження' }}</h2>
+        @for (line of proposed.pending; track line.key) { <p>{{ line.name }} × {{ line.quantity }} · Для: {{ line.forWhom }} · {{ line.unitPrice * line.quantity | currency:'USD' }}</p> }
+        <p><strong>Разом після підтвердження: {{ previewTotal(proposed.pending) | currency:'USD' }}</strong></p>
+        @if (proposed.confirmed.length) { <p>Додані страви й порції очікують підтвердження та поки не входять до замовлення ресторану.</p> }
+      }
+      <button type="button" [disabled]="busy() || (!isRecoveryLink && !preview())" (click)="confirm()">
+        {{ busy() ? 'Обробляємо…' : isRecoveryLink ? 'Відновити доступ' : 'Підтвердити замовлення' }}
+      </button>
+    }
+    @if (order(); as details) {
+      @if (details.reservationCancelled) { <p role="status">Організатор скасував бронювання. Замовлення ресторану не надсилалося.</p> }
+      @if (details.submissionOverdue) { <p role="status">Замовлення не надіслано вчасно. Зверніться до організатора зустрічі.</p> }
+      <p class="order-status" role="status">{{ statusLabel() }}</p>
+      @if (details.changeDeadline) { <p>Змінювати та підтверджувати страви можна до {{ details.changeDeadline | date:'dd.MM.yyyy HH:mm' }}.</p> }
+      @if (!canEdit()) { <p role="status">Зміни закриті. Ви можете переглядати замовлення. З питаннями звертайтеся до організатора зустрічі.</p> }
+      @if (details.ownerChangeSummary) { <p role="status">{{ details.ownerChangeSummary }}</p> }
+      <ul>
+        @for (line of details.confirmed; track line.key) {
+          <li><strong>{{ line.name }}</strong> × {{ line.quantity }} · Для: {{ line.forWhom }}
+            <span>{{ line.unitPrice * line.quantity | currency:'USD' }}</span>
+            <button type="button" [disabled]="busy() || !canEdit()" (click)="change(line, 'decrease')" [attr.aria-label]="'Зменшити кількість ' + line.name">−</button>
+            <button type="button" [disabled]="busy() || !canEdit()" (click)="change(line, 'increase')" [attr.aria-label]="'Додати порцію ' + line.name">+</button>
+            <button type="button" [disabled]="busy() || !canEdit()" (click)="change(line, 'remove')" [attr.aria-label]="'Скасувати ' + line.name">Скасувати страву</button>
+            @for (notice of details.notices; track notice.key) {
+              @if (notice.key === line.key) { <p class="change-notice">{{ notice.message }}</p> }
+            }
+          </li>
+        }
+      </ul>
+      <p class="total">Підтверджена сума: {{ details.confirmedTotal | currency:'USD' }}</p>
+      @for (notice of details.notices; track notice.key) {
+        @if (notice.message === 'Страву скасовано') { <p class="change-notice">{{ notice.dishName }} · {{ notice.forWhom }}: {{ notice.message }}</p> }
+      }
+      @if (details.pending?.length) {
+        <section aria-label="Зміни очікують підтвердження">
+          <h2>Зміни очікують підтвердження</h2>
+          <p>Запропонований склад після підтвердження. Додані страви та порції ще не входять до підтвердженої суми.</p>
+          @for (line of details.pending; track line.key) {
+            <p>{{ line.name }} × {{ line.quantity }} · Для: {{ line.forWhom }}
+              <button type="button" [disabled]="busy() || !canEdit()" (click)="change(line, 'decrease')" [attr.aria-label]="'Зменшити запропоновану кількість ' + line.name">−</button>
+              <button type="button" [disabled]="busy() || !canEdit()" (click)="change(line, 'remove')" [attr.aria-label]="'Скасувати страву ' + line.name">Скасувати страву</button>
+            </p>
+          }
+          <button type="button" [disabled]="busy() || !canEdit()" (click)="requestChanges()">Надіслати лист для підтвердження змін</button>
+        </section>
+      }
+      @if (canEdit()) {
+        <button type="button" [disabled]="busy()" (click)="openMenu()">Додати страви з меню</button>
+        @if (showMenu() && menu(); as personalMenu) {
+          @if (personalMenu.canChange) {
+            <app-guest-personal-menu [items]="personalMenu.items" [busy]="busy() || !canEdit()" (selected)="addDish($event)" />
+            <button type="button" [disabled]="busy()" (click)="showMenu.set(false)">Згорнути меню</button>
+          }
+        }
+      }
+    }
+  }
+  @if (confirmed()) { <button type="button" [disabled]="busy()" (click)="refresh()">Оновити замовлення</button> }
+  @if (error()) { <p role="alert">{{ error() }}</p> }
+  @if (message()) { <p role="status">{{ message() }}</p> }
+  <app-guest-access-recovery [orderId]="orderId" [open]="!confirmed()" />
+</main>

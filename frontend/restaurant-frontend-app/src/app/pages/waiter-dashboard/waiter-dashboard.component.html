@@ -1,0 +1,122 @@
+<app-header />
+
+<div class="subheading">
+  <h3>Hello, {{ waiterName() }} ({{ role() }})</h3>
+</div>
+
+<section class="filtration">
+  <div class="custom-selects">
+    <app-custom-select
+      class="filter"
+      iconPath="assets/svg/calendar.svg"
+      placeholder="Date"
+      [options]="dateOptions()"
+      [selectedOption]="selectedDate()"
+      (optionSelected)="onDateSelected($event)"
+    />
+
+    <app-custom-select
+      class="filter"
+      iconPath="assets/svg/clock.svg"
+      placeholder="Time"
+      [options]="timeOptions()"
+      [selectedOption]="selectedTime()"
+      (optionSelected)="onTimeSelected($event)"
+    />
+
+    <app-custom-select
+      class="filter"
+      [showIcon]="false"
+      placeholder="Any Table"
+      [options]="tableOptions()"
+      [selectedOption]="selectedTableOption()"
+      (optionSelected)="onTableSelected($event)"
+    />
+
+    <button
+      type="button"
+      class="button button--secondary button--large search-button"
+      aria-label="Apply reservation filters"
+      (click)="applyFilters()"
+    >
+      <img class="search-icon" src="assets/svg/search.svg" alt="" />
+    </button>
+  </div>
+
+</section>
+
+<p>Для надісланих групових замовлень можна почати та завершити обслуговування. Інші дії з бронюваннями ще розробляються.</p>
+
+<div class="reservations-subheader">
+  @switch (reservationsState()) {
+    @case ('loading') { <div role="status">Завантажуємо бронювання…</div> }
+    @case ('ready') {
+      <div class="number-reservations">{{ filteredReservationsLabel() }}</div>
+      <button type="button" class="button button--secondary button--large" [disabled]="reservationsRefreshing()" (click)="loadReservations()">
+        {{ reservationsRefreshing() ? 'Оновлюємо…' : 'Оновити бронювання' }}
+      </button>
+      @if (reservationsOutdated()) {
+        <div role="alert">Не вдалося оновити список. Показано останні завантажені дані; спробуємо знову автоматично.</div>
+      }
+    }
+    @case ('auth') { <div role="alert">Сесія завершилася. Увійдіть знову, щоб переглянути бронювання.</div> }
+    @case ('forbidden') { <div role="alert">Немає доступу до бронювань цієї локації. Зверніться до адміністратора.</div> }
+    @case ('error') {
+      <div role="alert">Не вдалося завантажити бронювання. Перевірте з’єднання та спробуйте ще раз.</div>
+      <button type="button" class="button button--secondary button--large" (click)="loadReservations()">Спробувати знову</button>
+    }
+  }
+</div>
+
+@if (showMakeReservationModal()) {
+  <app-waiter-make-reservation
+    (closeModal)="onCloseMakeReservationModal()"
+    (makeReservation)="onMakeReservation($event)"
+  />
+}
+
+@if (showQr()) {
+  <app-feedback-qr
+    [locationId]="qrLocationId()"
+    [reservationId]="qrReservationId()"
+    [isNewFeedback]="isNewFeedback()"
+    [waiterName]="waiterName()"
+    (closed)="closeQr()"
+  />
+}
+
+@if (reservationsState() === 'ready' && reservationCards().length > 0) {
+  <ul class="reservation-list">
+    @for (card of reservationCards(); track card.reservation.id) {
+      <app-card-reservation
+        [r]="card.reservation"
+        [statusEnum]="statusEnum"
+        [role]="role()"
+        [waiterActionsAvailable]="false"
+        [waiterServiceStatusAvailable]="true"
+        [statusChangePending]="!!statusChangePending() || reservationsRefreshing()"
+        [selectedTableLabel]="card.selectedTableLabel"
+        [availableTableOptions]="card.availableTableOptions"
+        [availableTableOptionsMap]="card.availableTableOptionsMap"
+        [createdByName]="card.reservation.createdByName"
+        [createdByRole]="card.reservation.createdByRole"
+        (cancelReservation)="cancelReservation($event)"
+        (postponeReservation)="onPostponeReservation($event)"
+        (statusChanged)="onReservationStatusChanged($event)"
+        (tableChanged)="onReservationTableChanged($event)"
+        (sendAnonymousFeedback)="onSendAnonymousFeedback($event)"
+        (preOrder)="onPreOrderWaiter($event)"
+      />
+    }
+  </ul>
+}
+
+@if (showPostponeModal()) {
+  <app-time-slots-modal
+    [locationName]="assignedLocationName()"
+    [table]="tableForPostpone()!"
+    [date]="postponeDate()"
+    (closeModal)="closePostponeModal()"
+    (timeSlotSelected)="onPostponeTimeSelected($event)"
+  />
+}

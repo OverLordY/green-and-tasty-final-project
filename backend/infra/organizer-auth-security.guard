@@ -1,0 +1,11 @@
+let pools = Resources.*[ Type == 'AWS::Cognito::UserPool' ]
+let clients = Resources.*[ Type == 'AWS::Cognito::UserPoolClient' ]
+rule verified_email when %pools !empty {
+  %pools.Properties.AutoVerifiedAttributes[*] == 'email'
+  %pools.DeletionPolicy == 'Retain'
+}
+rule public_code_flow when %clients !empty {
+  %clients.Properties.GenerateSecret == false
+  %clients.Properties.AllowedOAuthFlows[*] == 'code'
+  %clients.Properties.AllowedOAuthFlowsUserPoolClient == true
+}

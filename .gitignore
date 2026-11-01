@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+**/node_modules/
+.tools/
+.artifacts/
+**/dist/
+**/.angular/
+**/coverage/
+**/TestResults/
+*.log
+.env
+.env.*
+!.env.example
+.aws/
+*.user
+*.suo

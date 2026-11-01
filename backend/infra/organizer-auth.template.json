@@ -1,0 +1,37 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Dedicated organizer Cognito user pool with email verification and authorization code flow.",
+  "Metadata": { "AWSToolsMetrics": { "AWSAgentToolkit": "aws-cloudformation@3" } },
+  "Parameters": { "FrontendUrl": { "Type": "String", "AllowedPattern": "^https://[a-z0-9.-]+$", "Description": "HTTPS origin of the SPA, without trailing slash." } },
+  "Resources": {
+    "Users": {
+      "Type": "AWS::Cognito::UserPool", "DeletionPolicy": "Retain", "UpdateReplacePolicy": "Retain",
+      "Metadata": { "com.aws.cloudformation.Context": { "why": "Identities for organizers and assigned restaurant staff.", "must": "Require email verification; guests remain account-free; retain the pool." } },
+      "Properties": {
+        "UserPoolName": { "Fn::Sub": "${AWS::StackName}-users" },
+        "UsernameAttributes": ["email"], "AutoVerifiedAttributes": ["email"],
+        "AccountRecoverySetting": { "RecoveryMechanisms": [{ "Name": "verified_email", "Priority": 1 }] },
+        "Policies": { "PasswordPolicy": { "MinimumLength": 12, "RequireUppercase": true, "RequireLowercase": true, "RequireNumbers": true, "RequireSymbols": true } },
+        "AdminCreateUserConfig": { "AllowAdminCreateUserOnly": false }, "MfaConfiguration": "OFF"
+      }
+    },
+    "Client": {
+      "Type": "AWS::Cognito::UserPoolClient",
+      "Metadata": { "com.aws.cloudformation.Context": { "why": "Public SPA client for Cognito hosted login.", "must": "No client secret; authorization code flow; explicit HTTPS callback." } },
+      "Properties": {
+        "UserPoolId": { "Ref": "Users" }, "ClientName": "organizer-spa", "GenerateSecret": false,
+        "AllowedOAuthFlowsUserPoolClient": true, "AllowedOAuthFlows": ["code"], "AllowedOAuthScopes": ["openid", "email", "profile"],
+        "SupportedIdentityProviders": ["COGNITO"], "CallbackURLs": [{ "Fn::Sub": "${FrontendUrl}/auth/callback" }], "LogoutURLs": [{ "Ref": "FrontendUrl" }],
+        "PreventUserExistenceErrors": "ENABLED", "EnableTokenRevocation": true,
+        "IdTokenValidity": 60, "AccessTokenValidity": 60, "RefreshTokenValidity": 1,
+        "TokenValidityUnits": { "IdToken": "minutes", "AccessToken": "minutes", "RefreshToken": "days" }
+      }
+    },
+    "Domain": {
+      "Type": "AWS::Cognito::UserPoolDomain",
+      "Metadata": { "com.aws.cloudformation.Context": { "why": "Hosts the organizer sign-in page.", "must": "Use the Cognito-managed domain and exact SPA callback." } },
+      "Properties": { "UserPoolId": { "Ref": "Users" }, "Domain": { "Fn::Sub": "epam-marathon-final-${AWS::AccountId}" }, "ManagedLoginVersion": 1 }
+    }
+  },
+  "Outputs": { "UserPoolId": { "Value": { "Ref": "Users" } }, "ClientId": { "Value": { "Ref": "Client" } }, "Issuer": { "Value": { "Fn::Sub": "https://cognito-idp.${AWS::Region}.amazonaws.com/${Users}" } }, "LoginDomain": { "Value": { "Fn::Sub": "https://epam-marathon-final-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com" } } }
+}
