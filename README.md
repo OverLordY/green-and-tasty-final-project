@@ -19,7 +19,7 @@ Angular, .NET 8, AWS Lambda, DynamoDB, Cognito, SES, S3 та CloudFront.
 Локальний frontend: `cd frontend/restaurant-frontend-app`, `npm ci`, `npm start`.
 Для повної роботи потрібна конфігурація API, автентифікації та пошти; приклади
 налаштувань і опис розгортання наведено нижче. Додаткові перевірки для ДЗ №8
-готуються в окремому репозиторії.
+доступні в [окремому репозиторії ДЗ №8](https://github.com/OverLordY/green-and-tasty-homework8).
 
 Нижче збережено технічні нотатки розробки: окремі проміжні записи відображають
 стан на дату перевірки й не означають, що всі перелічені сценарії готові для
@@ -345,8 +345,8 @@ The provided homework-aqa.md maps this project to Direction 1, Level 3 after dep
 The final test repository should cover UI group creation/invitation, guest selection, Owner review,
 confirmation and guest removal, plus API authorization/validation checks. The waiter must see the
 same submitted order. A manual deployed two-guest-to-waiter journey is recorded below. Seven deployed
-Playwright smoke tests have passed locally; full authenticated browser E2E tests and a verified CI run
-remain outstanding. Report Portal is optional.
+Playwright smoke tests have passed locally and in GitHub Actions, along with the backend tests; full
+authenticated browser E2E tests remain outstanding. Report Portal is optional.
 Tests will use isolated dynamic data, accessible role/label locators, external base URLs/credentials,
 and failure traces. API-based setup must not replace the required main user-interface journey.
 
@@ -377,8 +377,8 @@ returned 401 in both directions. Temporary records were deleted. These credentia
 test, not obtained by the two guests through the live confirmation emails.
 
 An initial separate Playwright suite for homework 8 now exists at
-`F:\PythonProekty\ElevenLabs\epam-homework8-aqa`; seven deployed smoke tests passed. It is not yet
-complete Level 3 coverage, and its GitHub Actions workflow has not been run.
+`F:\PythonProekty\ElevenLabs\epam-homework8-aqa`; seven deployed smoke tests and the application's
+backend test suite passed in GitHub Actions. It is not yet complete Level 3 UI coverage.
 An isolated deployed deadline fixture was also used to verify that the guest preview returns
 `canChange=false` and the creation request returns 409 after the edit cutoff; its records were removed.
 An 18-test local selection covering deadline, expiry, repeated submission and concurrent updates passed.
