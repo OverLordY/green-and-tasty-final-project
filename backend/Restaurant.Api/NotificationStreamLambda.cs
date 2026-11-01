@@ -4,6 +4,7 @@ using Amazon.DynamoDBv2;
 using Amazon.Lambda.Core;
 using Amazon.SimpleEmailV2;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Restaurant.Api;
 
@@ -16,7 +17,9 @@ public sealed class NotificationStreamLambda
         var config = new ConfigurationBuilder().AddEnvironmentVariables().Build();
         var region = RegionEndpoint.GetBySystemName(config["AWS:Region"] ?? "eu-north-1");
         var groups = new DynamoGroupRepository(new AmazonDynamoDBClient(region), config);
-        var mailer = new SesGuestConfirmationMailer(new AmazonSimpleEmailServiceV2Client(region), config);
+        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+        var mailer = new SesGuestConfirmationMailer(new AmazonSimpleEmailServiceV2Client(region), config,
+            loggerFactory.CreateLogger<SesGuestConfirmationMailer>());
         handler = new(new(groups, new(groups, mailer, TimeProvider.System), new(groups, mailer, mailer, TimeProvider.System)));
     }
 
@@ -31,9 +34,10 @@ public sealed class NotificationStreamLambda
             foreach (var record in input.GetProperty("Records").EnumerateArray())
                 await handler.ProcessAsync(record, timeout.Token);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
             // Do not let SDK error messages leak personal details into Lambda logs.
+            context.Logger.LogLine($"Notification failure type: {exception.GetType().Name}");
             throw new InvalidOperationException("Notification stream processing failed; retry required.");
         }
     }
