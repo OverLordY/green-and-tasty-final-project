@@ -38,6 +38,11 @@
       "Default": "",
       "AllowedPattern": "^[A-Za-z0-9._%+@-]*$"
     },
+    "AutomationSandboxRecipient": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "^[A-Za-z0-9._%+@-]*$"
+    },
     "WaiterSubject": {
       "Type": "String",
       "AllowedPattern": "^[A-Za-z0-9_-]{1,128}$"
@@ -48,6 +53,9 @@
     }
   },
   "Conditions": {
+    "HasAutomationSandboxRecipient": {
+      "Fn::Not": [{ "Fn::Equals": [{ "Ref": "AutomationSandboxRecipient" }, ""] }]
+    },
     "HasAdditionalSandboxRecipient": {
       "Fn::Not": [
         {
@@ -848,6 +856,9 @@
                   "Resource": [
                     {
                       "Fn::Sub": "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${EmailSender}"
+                    },
+                    {
+                      "Fn::If": ["HasAutomationSandboxRecipient", { "Fn::Sub": "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${AutomationSandboxRecipient}" }, { "Ref": "AWS::NoValue" }]
                     },
                     {
                       "Fn::Sub": "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SandboxRecipient}"
