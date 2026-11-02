@@ -377,9 +377,9 @@ capabilities: on the deployed API both own-order reads returned 200, and cross-o
 returned 401 in both directions. Temporary records were deleted. These credentials were seeded for the
 test, not obtained by the two guests through the live confirmation emails.
 
-An initial separate Playwright suite for homework 8 now exists at
-`F:\PythonProekty\ElevenLabs\epam-homework8-aqa`; seven deployed smoke tests and the application's
-backend test suite passed in GitHub Actions. It is not yet complete Level 3 UI coverage.
+Homework 8 has a [separate Playwright repository](https://github.com/OverLordY/green-and-tasty-homework8).
+Its confirmed-guest Level 3 journey passed on the deployed application; the
+repository documents which additional requirements are covered in memory only.
 An isolated deployed deadline fixture was also used to verify that the guest preview returns
 `canChange=false` and the creation request returns 409 after the edit cutoff; its records were removed.
 An 18-test local selection covering deadline, expiry, repeated submission and concurrent updates passed.
