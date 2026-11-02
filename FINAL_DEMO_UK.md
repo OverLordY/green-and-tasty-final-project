@@ -43,5 +43,5 @@
 підтвердження, видалення та надсилання перевіряються через інтерфейс.
 
 - [Репозиторій автоматизованих тестів ДЗ №8](https://github.com/OverLordY/green-and-tasty-homework8)
-- [Успішний запуск усіх шести завдань CI](https://github.com/OverLordY/green-and-tasty-homework8/actions/runs/41427328345)
+- [Успішний запуск усіх шести завдань CI](https://github.com/OverLordY/green-and-tasty-homework8/actions/runs/41430333274)
 - [Успішний запуск сценарію з додатковими перевірками](https://github.com/OverLordY/green-and-tasty-homework8/actions/runs/41427771285)
